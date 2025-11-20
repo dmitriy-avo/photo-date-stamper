@@ -15,20 +15,13 @@ def get_target_files(path: str | Path | None) -> List[Path]:
     """
 
 
-    folder = folder = Path.cwd() if path is None else Path(path)
+    folder = Path.cwd() if path is None else Path(path)
     if not folder.exists():
         raise FileNotFoundError(f"Папка не найдена: {folder}")
     if not folder.is_dir():
-        raise NotADirectoryError(f"Указанный путь не является файлом, а не папкой: {folder}")
+        raise NotADirectoryError(f"Указанный путь не является папкой: {folder}")
 
     image_extensions = {".jpg", ".jpeg", ".png"}
-
-    files = []
-    for file in folder.iterdir():
-        if not file.is_file():
-            continue
-        if file.is_file() and file.suffix.lower() in [".jpg", ".jpeg", ".png"]:
-            files.append(file)
 
     return [
         item
@@ -66,3 +59,5 @@ def create_backup(path: str | Path | None) -> None:
     for image in all_images:
         destination = backup_dir / image.name
         shutil.copy2(image, destination)
+
+    print(f"Резервное копирование завершено: {len(all_images)} файлов → {backup_dir}")
