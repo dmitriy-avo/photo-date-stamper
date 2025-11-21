@@ -1,11 +1,19 @@
+from datetime import datetime
+from src.photo_date_stamper.image_processor import write_date_to_image
 from src.photo_date_stamper.exif_processor import get_exif_date
 
-# Замени 'photo.jpg' на имя твоего файла
-test_file = "photo.jpg"
-date = get_exif_date(test_file)
+# 1. Указываем пути
+source_file = "photo.jpg"
+output_file = "photo_stamped.jpg"
 
-if date:
-    print(f"Ура! Дата найдена: {date}")
-    print(f"Тип данных: {type(date)}") # Должно быть <class 'datetime.datetime'>
-else:
-    print("Дата не найдена или файл без EXIF.")
+# 2. Придумываем дату (например, сегодняшний день)
+fake_date = get_exif_date(source_file)
+
+print(f"Обрабатываю файл: {source_file}...")
+
+# 3. Вызываем твою функцию
+try:
+    write_date_to_image(source_file, fake_date, output_file)
+    print(f"Готово! Проверь файл {output_file}")
+except Exception as e:
+    print(f"Ошибка: {e}")
