@@ -9,62 +9,79 @@ def write_date_to_image(
         output_path: str | Path | None = None,
 ) -> None:
     """
-    Записывает дату съёмки прямо на фотографию в правый нижний угол.
-
-    Args:
-        source_path: путь к исходному изображению
-        date: объект datetime — дата, которую нужно нанести
-        output_path: куда сохранить результат.
-                     Если None — перезапишет исходный файл
+    Записывает полупрозрачную дату на фото.
+    Сохраняет высокое качество изображения.
     """
     source_path = Path(source_path)
     output_path = Path(output_path) if output_path is not None else source_path
 
-    # Открываем изображение
+    # 1. Открываем и сразу конвертируем в RGBA (для работы с прозрачностью)
     with Image.open(source_path) as img:
-        # Конвертируем в RGB, если вдруг PNG с прозрачностью или CMYK
-        if img.mode not in ("RGB", "RGBA"):
-            img = img.convert("RGB")
+        base_image = img.convert("RGBA")
 
-        draw = ImageDraw.Draw(img)
+        # Создаем отдельный прозрачный слой такого же размера
+        # (255, 255, 255, 0) -> полностью прозрачный фон
+        txt_layer = Image.new("RGBA", base_image.size, (255, 255, 255, 0))
+        draw = ImageDraw.Draw(txt_layer)
 
-        # Формируем красивую строку даты
+        # --- Настройки текста ---
         text = date.strftime("%d.%m.%Y")
+        font_size = max(20, int(base_image.height / 30))
 
-        # Динамический размер шрифта — примерно 1/30 от высоты фото
-        font_size = max(20, int(img.height / 30))
-        font = ImageFont.truetype("arial.ttf", font_size)
+        try:
+            font = ImageFont.truetype("arial.ttf", font_size)
+        except OSError:
+            try:
+                font = ImageFont.truetype("DejaVuSans.ttf", font_size)
+            except OSError:
+                font = ImageFont.load_default()
 
-
-        # Получаем габариты текста
+        # --- Расчет координат ---
         bbox = draw.textbbox((0, 0), text, font=font)
         text_width = bbox[2] - bbox[0]
         text_height = bbox[3] - bbox[1]
 
-        # Отступы от края — 3% от размеров, но не менее 20 px
-        padding_x = max(20, int(img.width * 0.03))
-        padding_y = max(20, int(img.height * 0.03))
+        padding_x = max(20, int(base_image.width * 0.03))
+        padding_y = max(20, int(base_image.height * 0.03))
 
-        # Координаты правого нижнего угла
-        x = img.width - text_width - padding_x
-        y = img.height - text_height - padding_y
-
-        # Немного поднимаем текст, чтобы он не касался самого края
+        x = base_image.width - text_width - padding_x
+        y = base_image.height - text_height - padding_y
         y -= int(font_size * 0.15)
 
-        # # Рисуем чёрную обводку (чтобы текст читался и на светлом, и на тёмном фоне)
-        # outline_range = 3
-        # for adj_x in range(-outline_range, outline_range + 1):
-        #     for adj_y in range(-outline_range, outline_range + 1):
-        #         if adj_x != 0 or adj_y != 0:
-        #             draw.text((x + adj_x, y + adj_y), text, font=font, fill="black")
+        # --- Цвета с прозрачностью (Alpha) ---
+        # Четвертое число (0-255) — это непрозрачность.
+        # 180 — это примерно 70% видимости (легкая прозрачность)
+        # 128 — это 50% видимости
+        opacity = 128
+        text_color = (255, 0, 0, opacity)  # Красный полупрозрачный
+        outline_color = (0, 0, 0, opacity)  # Черный полупрозрачный
 
-        # Основной красный текст
-        draw.text((x, y), text, font=font, fill="red")
+        # --- Рисование на прозрачном слое ---
+        thickness = 2
+        for adj_x in range(-thickness, thickness + 1):
+            for adj_y in range(-thickness, thickness + 1):
+                if adj_x != 0 or adj_y != 0:
+                    draw.text((x + adj_x, y + adj_y), text, font=font, fill=outline_color)
 
-        # Сохраняем с сохранением EXIF
-        exif_data = img.getexif()
-        if exif_data is not None:
-            img.save(output_path, exif=img.info.get('exif'))
-        else:
-            img.save(output_path)
+        draw.text((x, y), text, font=font, fill=text_color)
+
+        # --- Слияние слоев ---
+        # alpha_composite накладывает txt_layer поверх base_image, учитывая прозрачность
+        combined = Image.alpha_composite(base_image, txt_layer)
+
+        # --- Конвертация обратно в RGB (JPEG не умеет RGBA) ---
+        final_img = combined.convert("RGB")
+
+        # --- Сохранение с высоким качеством ---
+        exif_bytes = img.info.get('exif')
+
+        save_kwargs = {
+            "quality": 95,  # Высокое качество (стандарт ~75)
+            "subsampling": 0  # Сохраняем четкость цветов (4:4:4)
+        }
+
+        if exif_bytes:
+            save_kwargs["exif"] = exif_bytes
+
+        final_img.save(output_path, **save_kwargs)
+
